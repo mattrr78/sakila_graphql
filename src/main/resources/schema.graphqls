@@ -3,8 +3,13 @@ Graphql example schema for the sakila database.
 Uses graphql-java and Spring Boot for backend.
 """
 type Query {
-    "Fetch Customers with optional page number"
-    findCustomers(page: Int): [Customer]
+    "Fetch Customers by optional, zero-based page number and page size."
+    findCustomers(page: Int, size: Int): CustomerConnection
+}
+
+type CustomerConnection {
+    total: Int
+    content: [Customer]
 }
 
 type Customer {

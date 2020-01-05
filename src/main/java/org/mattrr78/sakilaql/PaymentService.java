@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class PaymentService {
@@ -15,17 +16,18 @@ public class PaymentService {
         this.repo = repo;
     }
 
-    Map<Long, List<Long>> findCustomerIdToPaymentIdsMap(List<Long> customerIds)  {
-        if (customerIds.isEmpty())  {
+    Map<Long, List<Long>> findCustomerIdToPaymentIdsMap(List<Customer> customers)  {
+        if (customers.isEmpty())  {
             return Collections.emptyMap();
         }
+        List<Long> customerIds = customers.stream().map(Customer::getId).collect(Collectors.toList());
         Map<Long, List<Long>> customerIdToPaymentIdsMap = new HashMap<>();
         for (Map<String, Long> entry : repo.findPaymentIdsByCustomerIds(customerIds))  {
             Long customerId = entry.get("customerId");
             if (!customerIdToPaymentIdsMap.containsKey(customerId))  {
                 customerIdToPaymentIdsMap.put(customerId, new ArrayList<>());
             }
-            customerIdToPaymentIdsMap.get(customerId).add(entry.get("id"));
+            customerIdToPaymentIdsMap.get(customerId).add(entry.get("paymentId"));
         }
         return customerIdToPaymentIdsMap;
     }

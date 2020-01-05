@@ -15,8 +15,8 @@ public class CustomerService {
         this.repo = repo;
     }
 
-    public Page<Customer> findCustomers(int page)  {
-        return repo.findCustomers(PageRequest.of(page, 100, Sort.by("name")));
+    public Page<Customer> findCustomers(int page, int size)  {
+        return repo.findCustomers(PageRequest.of(page, size, Sort.by("name")));
     }
 
 }

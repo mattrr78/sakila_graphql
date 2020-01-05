@@ -10,7 +10,7 @@ import java.util.Map;
 @Repository
 public interface PaymentJpaRepo extends JpaRepository<Payment, Long>  {
 
-    @Query("SELECT payment.customerId AS customerId, payment.id AS id FROM Payment payment WHERE payment.customerId IN (?1)")
+    @Query("SELECT payment.customerId AS customerId, payment.id AS paymentId FROM Payment payment WHERE payment.customerId IN (?1)")
     List<Map<String, Long>> findPaymentIdsByCustomerIds(List<Long> customerIds);
 
     @Query(value =

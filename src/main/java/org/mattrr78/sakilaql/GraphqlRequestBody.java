@@ -1,11 +1,12 @@
 package org.mattrr78.sakilaql;
 
+import java.util.HashMap;
 import java.util.Map;
 
 public class GraphqlRequestBody {
     private String query;
     private String operationName;
-    private Map<String, Object> variables;
+    private Map<String, Object> variables = new HashMap<>();
 
     public String getQuery() {
         return query;
@@ -28,6 +29,8 @@ public class GraphqlRequestBody {
     }
 
     public void setVariables(Map<String, Object> variables) {
-        this.variables = variables;
+        if (variables != null) {
+            this.variables = variables;
+        }
     }
 }

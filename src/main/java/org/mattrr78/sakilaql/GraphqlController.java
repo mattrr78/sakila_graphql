@@ -9,10 +9,12 @@ import graphql.schema.GraphQLSchema;
 import graphql.schema.idl.RuntimeWiring;
 import graphql.schema.idl.SchemaGenerator;
 import graphql.schema.idl.SchemaParser;
+import graphql.schema.idl.TypeDefinitionRegistry;
 import org.dataloader.BatchLoader;
 import org.dataloader.DataLoader;
 import org.dataloader.DataLoaderRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,17 +23,20 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.PostConstruct;
 import java.math.BigDecimal;
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 import static graphql.schema.idl.TypeRuntimeWiring.newTypeWiring;
 
 @RestController
 @RequestMapping(path = "/graphql")
 public class GraphqlController {
+
+    private static final String CUSTOMER_ID_TO_PAYMENT_IDS_MAP_KEY = "customerIdsToPaymentIdsMap";
+
+    private static final String RENTAL_HISTORY_DATA_LOADER_KEY = "rentalHistoryDataLoader";
 
     private final CustomerService customerService;
 
@@ -57,13 +62,12 @@ public class GraphqlController {
                 .build();
 
         Map<String, Object> result = graphQL.execute(executionInput).toSpecification();
-        System.out.println("Customers requested");
+        System.out.println("Debug here to view Customers fetched in result variable.");
     }
 
     private GraphQLSchema createSchema() throws Exception {
-        String schema = loadResourceFileContents("schema.graphqls");
-
-        return new SchemaGenerator().makeExecutableSchema(new SchemaParser().parse(schema), createRuntimeWiring());
+        TypeDefinitionRegistry typeDefinitionRegistry = new SchemaParser().parse(loadResourceFileContents("schema.graphqls"));
+        return new SchemaGenerator().makeExecutableSchema(typeDefinitionRegistry, createRuntimeWiring());
     }
 
     private RuntimeWiring createRuntimeWiring() {
@@ -71,26 +75,37 @@ public class GraphqlController {
                 .type(newTypeWiring("Query")
                         .dataFetcher("findCustomers", environment -> {
                             int page = 0;
-                            if (environment.containsArgument("page"))  {
+                            if (environment.containsArgument("page")) {
                                 page = environment.getArgument("page");
                             }
-                            List<Customer> customers = customerService.findCustomers(page).getContent();
-                            if (!customers.isEmpty() && environment.getSelectionSet().contains("rentalHistory")) {
-                                List<Long> customerIds = customers.stream().map(Customer::getId).collect(Collectors.toList());
-                                Map<Long, List<Long>> customerIdsToPaymentIdsMap = paymentService.findCustomerIdToPaymentIdsMap(customerIds);
-                                GraphQLContext context = environment.getContext();
-                                context.put("customerIdsToPaymentIdsMap", customerIdsToPaymentIdsMap);
+
+                            int size = 20;
+                            if (environment.containsArgument("size")) {
+                                size = environment.getArgument("size");
                             }
-                            return customers;
+
+                            Page<Customer> customerPage = customerService.findCustomers(page, size);
+                            Map<String, Object> customerConnectionMap = new HashMap<>();
+                            customerConnectionMap.put("total", customerPage.getTotalElements());
+
+                            List<Customer> customers = customerPage.getContent();
+                            customerConnectionMap.put("content", customers);
+
+                            if (!customers.isEmpty() && environment.getSelectionSet().contains("content/rentalHistory")) {
+                                GraphQLContext context = environment.getContext();
+                                context.put(CUSTOMER_ID_TO_PAYMENT_IDS_MAP_KEY, paymentService.findCustomerIdToPaymentIdsMap(customers));
+                            }
+
+                            return customerConnectionMap;
                         })
                 )
                 .type(newTypeWiring("Customer")
                         .dataFetcher("rentalHistory", environment -> {
                             Customer customer = environment.getSource();
                             GraphQLContext context = environment.getContext();
-                            Map<Long, List<Long>> customerIdsToPaymentIdsMap = context.get("customerIdsToPaymentIdsMap");
+                            Map<Long, List<Long>> customerIdsToPaymentIdsMap = context.get(CUSTOMER_ID_TO_PAYMENT_IDS_MAP_KEY);
                             List<Long> paymentIds = customerIdsToPaymentIdsMap.get(customer.getId());
-                            DataLoader<Long, Object> dataLoader = environment.getDataLoader("rentalHistory");
+                            DataLoader<Long, Object> dataLoader = environment.getDataLoader(RENTAL_HISTORY_DATA_LOADER_KEY);
                             return dataLoader.loadMany(paymentIds);
                         })
                 )
@@ -98,7 +113,8 @@ public class GraphqlController {
                         .dataFetcher("amount", environment -> {
                             Map<String, Object> source = environment.getSource();
                             BigDecimal amount = (BigDecimal)source.get("amount");
-                            Currency currency = Currency.valueOf(environment.getArgument("currency"));
+                            String currencyLiteral = environment.getArgument("currency");
+                            Currency currency = currencyLiteral != null ? Currency.valueOf(currencyLiteral) : Currency.USD;
                             return currencyConverter.convertFromUSD(amount, currency);
                         }))
                 .build();
@@ -112,7 +128,7 @@ public class GraphqlController {
                 });
         DataLoader<Long, Map<String, Object>> rentalHistoryDataLoader = DataLoader.newDataLoader(rentalHistoryBatchLoader);
 
-        return new DataLoaderRegistry().register("rentalHistory", rentalHistoryDataLoader);
+        return new DataLoaderRegistry().register(RENTAL_HISTORY_DATA_LOADER_KEY, rentalHistoryDataLoader);
     }
 
     private String loadResourceFileContents(String fileName) throws Exception {
@@ -124,7 +140,7 @@ public class GraphqlController {
         ExecutionInput executionInput = ExecutionInput.newExecutionInput()
                 .operationName(requestBody.getOperationName())
                 .query(requestBody.getQuery())
-                .variables(requestBody.getVariables() != null ? requestBody.getVariables() : Collections.emptyMap())
+                .variables(requestBody.getVariables())
                 .dataLoaderRegistry(createDataLoaderRegistry())
                 .build();
         return ResponseEntity.ok(graphQL.execute(executionInput).toSpecification());
