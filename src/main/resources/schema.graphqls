@@ -1,0 +1,44 @@
+"""
+Graphql example schema for the sakila database.
+Uses graphql-java and Spring Boot for backend.
+"""
+type Query {
+    "Fetch Customers with optional page number"
+    findCustomers(page: Int): [Customer]
+}
+
+type Customer {
+    id: ID
+    name: String
+    address: String
+    city: String
+    country: String
+    phone: String
+    "Fetch this customer's rental history"
+    rentalHistory: [RentalHistoryEntry]
+}
+
+type RentalHistoryEntry {
+    film: String,
+    "Default currency is USD"
+    amount(currency: Currency): Float
+}
+
+enum Currency {
+    "US Dollar"
+    USD,
+    "Euro"
+    EUR,
+    "British Pound"
+    GBP,
+    "Canadian Dollar"
+    CAD,
+    "Mexican Peso"
+    MXN,
+    "Indian Rupee"
+    INR,
+    "Australian Dollar"
+    AUD,
+    "Japanese Yen"
+    JPY
+}

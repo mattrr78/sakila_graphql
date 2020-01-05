@@ -1,0 +1,11 @@
+{
+    findCustomers(page: 1)  {
+        id
+        name
+        address
+        rentalHistory {
+            amount(currency: JPY)
+            film
+        }
+    }
+}
