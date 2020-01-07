@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.annotation.PostConstruct;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +37,8 @@ public class GraphqlController {
 
     private static final String RENTAL_HISTORY_DATA_LOADER_KEY = "rentalHistoryDataLoader";
 
+    private final ActorService actorService;
+
     private final CustomerService customerService;
 
     private final PaymentService paymentService;
@@ -47,22 +48,13 @@ public class GraphqlController {
     private final GraphQL graphQL;
 
     @Autowired
-    GraphqlController(CustomerService customerService, PaymentService paymentService) throws Exception {
+    GraphqlController(ActorService actorService, CustomerService customerService, PaymentService paymentService)
+            throws Exception {
+        this.actorService = actorService;
         this.customerService = customerService;
         this.paymentService = paymentService;
         this.currencyConverter = new CurrencyConverter();
         this.graphQL = GraphQL.newGraphQL(createSchema()).build();
-    }
-
-    @PostConstruct
-    public void init() throws Exception {
-        ExecutionInput executionInput = ExecutionInput.newExecutionInput()
-                .query(loadResourceFileContents("request.graphql"))
-                .dataLoaderRegistry(createDataLoaderRegistry())
-                .build();
-
-        Map<String, Object> result = graphQL.execute(executionInput).toSpecification();
-        System.out.println("Debug here to view Customers fetched in result variable.");
     }
 
     private GraphQLSchema createSchema() throws Exception {
@@ -73,6 +65,7 @@ public class GraphqlController {
     private RuntimeWiring createRuntimeWiring() {
         return RuntimeWiring.newRuntimeWiring()
                 .type(newTypeWiring("Query")
+                        .dataFetcher("findActors", environment -> actorService.findAll())
                         .dataFetcher("findCustomers", environment -> {
                             int page = 0;
                             if (environment.containsArgument("page")) {
@@ -97,6 +90,22 @@ public class GraphqlController {
                             }
 
                             return customerConnectionMap;
+                        })
+
+                )
+                .type(newTypeWiring("Actor")
+                        .dataFetcher("name", environment -> {
+                            boolean useIndexedFormat = false;
+                            if (environment.containsArgument("useIndexedFormat"))  {
+                                useIndexedFormat = environment.getArgument("useIndexedFormat");
+                            }
+
+                            Actor actor = environment.getSource();
+                            if (useIndexedFormat)  {
+                                return actor.getLastName() + ", " + actor.getFirstName();
+                            } else  {
+                                return actor.getFirstName() + " " + actor.getLastName();
+                            }
                         })
                 )
                 .type(newTypeWiring("Customer")
